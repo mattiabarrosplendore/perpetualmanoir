@@ -60,8 +60,8 @@
 
   <div id="timebar">
     <span id="clock">--:--</span>
-    <input id="scrub" type="range" min="0" max="1439" value="720">
-    <span id="live" class="on">● ora reale</span>
+    <input id="scrub" type="range" min="0" max="1439" value="900">
+    <span id="live">prova · 15:00</span>
   </div>
 
   <div id="log">
@@ -86,7 +86,7 @@
 /* ===== STATO ===== */
 const state = {
   lat:44.7767, lon:1.0080, placeName:"Belvès",
-  temp:27, cloud:18, wind:10, humidity:55, precip:0, snow:0,
+  temp:35, cloud:5, wind:8, humidity:40, precip:0, snow:0,
   sunElev:30, sunAz:180
 };
 
@@ -126,7 +126,7 @@ function roomLabel(w){
 }
 
 /* ===== TEMPO ===== */
-let timeOverride=null;
+let timeOverride=900;   // prova: apre alle 15:00 (per il live, premi "ora reale")
 function currentDate(){ if(timeOverride===null) return new Date();
   const d=new Date(); d.setHours(Math.floor(timeOverride/60), timeOverride%60, 0, 0); return d; }
 
@@ -191,17 +191,19 @@ function buildEngine(){
   swell.connect(master.gain);
 
   const spec=[
-    {mul:0.5, base:0.20, night:true },{mul:1.0, base:0.30 },{mul:1.2, base:0.10, night:true },
-    {mul:1.5, base:0.24 },{mul:2.0, base:0.22 },{mul:3.0, base:0.14 },
-    {mul:4.0, base:0.10, high:true },{mul:5.0, base:0.07, high:true },{mul:6.0, base:0.05, high:true }
+    {mul:0.5, base:0.02, night:true },{mul:1.0, base:0.06 },{mul:1.2, base:0.05, night:true },
+    {mul:1.5, base:0.12 },{mul:2.0, base:0.08 },{mul:3.0, base:0.15 },
+    {mul:4.0, base:0.12 },{mul:5.0, base:0.08, high:true },{mul:6.0, base:0.04, high:true }
   ];
   const voices=spec.map((p,i)=>{
     const osc=new Tone.Oscillator({frequency:71.8*p.mul, type:"sine"}).start();
-    const shimmer=new Tone.Gain(0.6), level=new Tone.Gain(0.0).connect(busDry);
-    osc.connect(shimmer); shimmer.connect(level);
+    const shimmer=new Tone.Gain(0.6), level=new Tone.Gain(0.0);
+    const span=((i%2)*2-1)*Math.min(0.55,(p.mul-1)*0.13);   // gravi al centro, acuti larghi nello stereo
+    const vpan=new Tone.Panner(span).connect(busDry);
+    osc.connect(shimmer); shimmer.connect(level); level.connect(vpan);
     const lfo=new Tone.LFO({frequency:0.014+i*0.004, min:0.32, max:1.0}).start();
     lfo.connect(shimmer.gain);
-    return {osc, level, lfo, ...p};
+    return {osc, level, lfo, vpan, ...p};
   });
 
   const noise=new Tone.Noise("pink").start();
@@ -212,12 +214,57 @@ function buildEngine(){
   const rFilter=new Tone.Filter({type:"highpass", frequency:2200, Q:1}).connect(busDry);
   const rLevel=new Tone.Gain(0.0); rain.connect(rLevel); rLevel.connect(rFilter);
 
-  master.gain.rampTo(0.58, 6);
+  // SOPRATONI: voci alte che fioriscono lente sopra il bordone, pescate dal cielo, sparse nello stereo
+  const overtones=[];
+  for(let i=0;i<3;i++){
+    const osc=new Tone.Oscillator({type:"sine", frequency:220}).start();
+    const env=new Tone.AmplitudeEnvelope({attack:20, decay:0.1, sustain:1.0, release:45, attackCurve:"sine", releaseCurve:"sine"});
+    const opan=new Tone.Panner(0).connect(busDry);
+    const lvl=new Tone.Gain(0.0).connect(opan);
+    osc.connect(env); env.connect(lvl);
+    overtones.push({osc, env, lvl, opan, busy:false});
+  }
 
-  const e={ master, dry, filter, wetBus, fallbackVerb, panner, busDry, voices, nLevel, nFilter, rLevel,
-            currentF:71.8, roomW:{cucina:1,soggiorno:0,bedroom:0}, garden:0, hasIR:false, convs:null, hum:null };
-  loadRoomAudio(e);   // asincrono: quando pronti, passa alla convoluzione + voce
+  master.gain.rampTo(0.40, 6);
+
+  const e={ master, dry, filter, wetBus, fallbackVerb, panner, busDry, voices, nLevel, nFilter, rLevel, overtones,
+            currentF:71.8, roomW:{cucina:1,soggiorno:0,bedroom:0}, garden:0, hasIR:false, convs:null, hum:null,
+            gardenBeds:null, gardenEvents:null };
+  loadRoomAudio(e);   // asincrono: convoluzione + voce
+  loadGarden(e);      // asincrono: letti ed eventi del giardino
   return e;
+}
+
+/* carica i suoni del giardino (letti a grani + eventi); se falliscono resta tutto sintetico */
+async function loadGarden(e){
+  const tryBuf=(url)=>Promise.race([
+    new Promise((res,rej)=>{ const b=new Tone.Buffer(url, ()=>res(b), ()=>rej(0)); }),
+    new Promise((_,rej)=>setTimeout(()=>rej(0),9000)) ]);
+  // letti: ambiente, cicale, uccelli - granulati, stereo, entrano col giardino
+  try{
+    const beds=[["audio/bed_giardino.mp3","giardino",0.42],
+                ["audio/bed_cicale.mp3","cicale",0.40],
+                ["audio/bed_birds.mp3","birds",0.34]];
+    e.gardenBeds=[];
+    for(const [url,kind,base] of beds){
+      const buf=await tryBuf(url);
+      const gp=new Tone.GrainPlayer({url:buf, loop:true, grainSize:0.35, overlap:0.2, detune:0});
+      const g=new Tone.Gain(0.0).connect(e.busDry); gp.connect(g); gp.start();
+      e.gardenBeds.push({player:gp, gain:g, kind, base});
+    }
+  }catch(err){ e.gardenBeds=null; }
+  // eventi: passi nelle foglie, voci alla piscina - one-shot, sparsi, panpottati a caso
+  try{
+    const evs=[["audio/event_camminata.mp3"],["audio/event_pool.mp3"]];
+    e.gardenEvents=[];
+    for(const [url] of evs){
+      const buf=await tryBuf(url);
+      const pan=new Tone.Panner(0).connect(e.busDry);
+      const g=new Tone.Gain(0.0).connect(pan);
+      const pl=new Tone.Player({url:buf, loop:false}); pl.connect(g);
+      e.gardenEvents.push({player:pl, gain:g, pan, len:buf.duration});
+    }
+  }catch(err){ e.gardenEvents=null; }
 }
 
 /* carica IR e humming; se falliscono (es. anteprima), resta sul riverbero algoritmico */
@@ -263,22 +310,22 @@ function updateMapping(){
   const major = bright*(1-sad);                     // sole sereno -> felice, maggiore
   const minor = Math.max(night, sad);               // notte o pioggia -> minore, triste
 
-  const cutoff=320+bright*4200+warm*1100-cloud*1100-night*700-sad*1600+garden*2600;
-  e.filter.frequency.rampTo(clamp(cutoff,210,9000),6);
+  const cutoff=300+bright*3000+warm*900-cloud*1100-night*700-sad*1500+garden*1500;
+  e.filter.frequency.rampTo(clamp(cutoff,210,7000),6);
 
   e.voices.forEach(v=>{
     let amp=v.base;
-    if(v.high) amp*=major*0.65;                      // armonici alti più morbidi, solo col sole sereno
+    if(v.high) amp*=major*0.6;                       // armonici alti più morbidi, solo col sole sereno
     else if(v.night) amp*=minor;                     // terza minore e sub: notte o pioggia
-    else amp*=(0.82+0.18*bright);
+    else amp*=(0.7+0.3*bright);
     if(v.mul===1.5) amp*=(1-0.25*minor);
     v.level.gain.rampTo(amp,6);
     v.osc.frequency.rampTo(F*v.mul*(1+(warm-0.5)*0.004*v.mul),6);   // glissa con la stanza + caldo
     v.lfo.frequency.rampTo((0.013+wind*0.018)*(1-0.4*night),12);    // movimento lento
   });
 
-  e.nLevel.gain.rampTo((0.03+cloud*0.22+wind*0.12)*(1-0.4*night)+garden*0.05,6);
-  e.nFilter.frequency.rampTo(600+wind*3600,6);
+  e.nLevel.gain.rampTo((cloud*0.12+wind*0.04)*(1-0.4*night),6);   // aria solo con nuvole/vento, niente sibilo col sole
+  e.nFilter.frequency.rampTo(500+wind*2200,6);
   e.rLevel.gain.rampTo(clamp(state.precip/4,0,1)*0.5,4);
   e.dry.gain.rampTo(DRY*(1+0.6*garden),6);          // fuori il suono diretto viene avanti
 
@@ -295,9 +342,19 @@ function updateMapping(){
   // voce: un filo più presente di giorno, si ritira di notte
   if(e.hum) e.hum.gain.gain.rampTo(HUM*(0.5+0.5*bright),6);
 
+  // letti del giardino: entrano quando si è fuori; cicale e uccelli anche col sole
+  if(e.gardenBeds){
+    e.gardenBeds.forEach(b=>{
+      let lv=b.base*garden;
+      if(b.kind==='cicale') lv*=(0.4+0.6*bright);
+      if(b.kind==='birds')  lv*=(0.5+0.5*bright);
+      b.gain.gain.rampTo(lv,6);
+    });
+  }
+
   const pan=Math.sin((state.sunAz-180)*Math.PI/180)*0.4*(1-0.4*night);
   e.panner.pan.rampTo(clamp(pan,-0.4,0.4),12);   // si muove ma resta sempre udibile da entrambi i lati
-  e.master.gain.rampTo(0.58*(1-0.15*night),6);
+  e.master.gain.rampTo(0.40*(1-0.15*night),6);
 }
 
 function drift(){
@@ -305,6 +362,56 @@ function drift(){
   engine.voices.forEach((v,i)=>{ const base=0.013+i*0.004;
     v.lfo.frequency.rampTo(clamp(base+(Math.random()-0.5)*0.006,0.004,0.08),40); });
   if(engine.hum) engine.hum.player.playbackRate=1+(Math.random()-0.5)*0.012;  // la voce non si ripete mai uguale
+}
+
+/* ===== SOPRATONI — fioriture lente pescate dal cielo ===== */
+const MAJOR=[3.0, 3.75, 4.5, 5.0, 6.0, 8.0];      // gradi medio-alti, luminosi (col sole)
+const MINOR=[3.0, 3.6, 4.0, 4.8, 6.0, 7.2];       // gradi medio-alti, scuri/sospesi (con la pioggia)
+function bloom(){
+  if(engine){
+    const e=engine;
+    const bright=clamp(state.sunElev,0,55)/55;
+    const clear =1-clamp(state.cloud/100,0,1);
+    const sad   =clamp(state.precip/3,0,1);
+    const openness=bright*clear;                    // quanto il cielo è perfetto
+    const active=e.overtones.filter(o=>o.busy).length;
+    const prob=openness*0.8+0.12;                   // più limpido = più probabile
+    if(active<2 && Math.random()<prob){
+      const o=e.overtones.find(o=>!o.busy);
+      if(o){
+        const set=(sad>0.4)?MINOR:MAJOR;            // pioggia -> minore
+        const n=Math.max(2,Math.round(set.length*(0.4+0.6*openness)));  // sole = gradi più acuti
+        const ratio=set[Math.floor(Math.random()*n)];
+        o.osc.frequency.rampTo(e.currentF*ratio,5);
+        o.opan.pan.rampTo((Math.random()*2-1)*0.6,3);   // ogni fioritura in un punto diverso dello stereo
+        o.env.attack =10+Math.random()*16;          // 10-26 s di salita
+        o.env.release=26+Math.random()*40;          // 26-66 s di coda
+        o.lvl.gain.rampTo((0.045+0.04*openness)*(0.7+Math.random()*0.5),3);  // sempre sotto il bordone
+        o.busy=true; o.env.triggerAttack();
+        const hold=(16+Math.random()*40)*1000;
+        setTimeout(()=>{ o.env.triggerRelease();
+          setTimeout(()=>{ o.busy=false; }, (o.env.release+2)*1000); }, hold);
+      }
+    }
+  }
+  setTimeout(bloom,(6+Math.random()*12)*1000);      // ricontrolla ogni 6-18 s
+}
+
+/* ===== EVENTI DEL GIARDINO — passi, voci, sparsi e panpottati ===== */
+function gardenEvent(){
+  if(engine && engine.gardenEvents && engine.gardenEvents.length){
+    const g=engine.garden||0;
+    if(g>0.4 && Math.random()<g*0.5){
+      const ev=engine.gardenEvents[Math.floor(Math.random()*engine.gardenEvents.length)];
+      try{
+        ev.pan.pan.value=(Math.random()*2-1)*0.7;     // a caso nello stereo
+        ev.gain.gain.value=0; ev.gain.gain.rampTo(0.45,1.5);
+        const off=Math.random()*Math.max(0.1,(ev.len||10)-6);
+        ev.player.start(undefined, off);
+      }catch(e){}
+    }
+  }
+  setTimeout(gardenEvent,(22+Math.random()*38)*1000); // ogni 22-60 s
 }
 
 /* ===== VISIVO ===== */
@@ -354,7 +461,7 @@ gate.addEventListener("click", async ()=>{
   gate.classList.add("fade-out"); setTimeout(()=>gate.remove(),2400);
   await Tone.start(); await locate();
   engine=buildEngine(); await fetchWeather(); tick();
-  setInterval(tick,1000); setInterval(fetchWeather,600000); setInterval(drift,40000);
+  setInterval(tick,1000); setInterval(fetchWeather,600000); setInterval(drift,40000); bloom(); gardenEvent();
 },{once:true});
 tick();
 </script>
