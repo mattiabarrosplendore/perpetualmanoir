@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>bordone — Manoir de la Moissie</title>
+<style>
+  :root{
+    --sky-top:#14171c; --sky-bot:#05070a;
+    --ink:#e9e4d8; --ink-dim:rgba(233,228,216,.42);
+    --line:rgba(233,228,216,.16); --horizon:78%;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{ background:#05070a; color:var(--ink);
+    font-family: ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    overflow:hidden; -webkit-font-smoothing:antialiased; }
+  #sky{ position:fixed; inset:0;
+    background:radial-gradient(120% 90% at 50% var(--horizon), var(--sky-top) 0%, var(--sky-bot) 100%);
+    transition:background 8s linear; }
+  #horizon{ position:fixed; left:0; right:0; top:var(--horizon); height:1px;
+    background:var(--line); transition:top 8s linear, background 8s linear; }
+  #grain{ position:fixed; inset:-50%;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+    opacity:.035; mix-blend-mode:screen; pointer-events:none; }
+  #title{ position:fixed; top:clamp(20px,5vw,56px); left:clamp(20px,5vw,56px);
+    font-size:12px; letter-spacing:.42em; text-transform:uppercase; color:var(--ink-dim); }
+  #place{ position:fixed; top:clamp(20px,5vw,56px); right:clamp(20px,5vw,56px);
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); text-align:right; }
+  #timebar{ position:fixed; left:0; right:0; bottom:96px;
+    padding:0 clamp(20px,5vw,56px); display:flex; align-items:center; gap:18px;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
+  #clock{ color:var(--ink); font-size:13px; letter-spacing:.06em; min-width:54px; }
+  #scrub{ -webkit-appearance:none; appearance:none; flex:1; height:1px; background:var(--line); outline:none; cursor:pointer; }
+  #scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:var(--ink); }
+  #scrub::-moz-range-thumb{ width:11px; height:11px; border:none; border-radius:50%; background:var(--ink); }
+  #live{ cursor:pointer; letter-spacing:.2em; color:var(--ink-dim); border:1px solid var(--line); padding:7px 12px; transition:color .3s,border-color .3s; white-space:nowrap; }
+  #live.on{ color:var(--ink); border-color:var(--ink); }
+  #log{ position:fixed; left:0; right:0; bottom:0;
+    padding:22px clamp(20px,5vw,56px) calc(22px + env(safe-area-inset-bottom));
+    display:grid; gap:14px 28px; grid-template-columns:repeat(auto-fit,minmax(86px,1fr));
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
+  .cell .v{ display:block; color:var(--ink); font-size:15px; letter-spacing:.04em; margin-top:5px; text-transform:none; }
+  .cell .v small{ color:var(--ink-dim); font-size:11px; }
+  #gate{ position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:26px; background:#05070a; cursor:pointer; }
+  #gate h1{ font-weight:400; font-size:13px; letter-spacing:.5em; text-transform:uppercase; color:var(--ink-dim); }
+  #gate .start{ font-size:15px; letter-spacing:.34em; text-transform:uppercase; color:var(--ink);
+    border:1px solid var(--line); padding:18px 34px; transition:border-color .4s,color .4s; }
+  #gate:hover .start{ border-color:var(--ink); }
+  #gate .sub{ font-size:11px; letter-spacing:.06em; color:var(--ink-dim); max-width:34ch; text-align:center; line-height:1.7; }
+  .fade-out{ opacity:0; transition:opacity 2.4s ease; pointer-events:none; }
+  @media (prefers-reduced-motion:reduce){ #sky,#horizon{ transition:none; } }
+</style>
+</head>
+<body>
+  <div id="sky"></div><div id="horizon"></div><div id="grain"></div>
+  <div id="title">bordone</div>
+  <div id="place">Belvès</div>
+
+  <div id="timebar">
+    <span id="clock">--:--</span>
+    <input id="scrub" type="range" min="0" max="1439" value="720">
+    <span id="live" class="on">● ora reale</span>
+  </div>
+
+  <div id="log">
+    <div class="cell">stanza<span class="v" data-k="room">—</span></div>
+    <div class="cell">sole<span class="v" data-k="sun">—</span></div>
+    <div class="cell">temp<span class="v" data-k="temp">—</span></div>
+    <div class="cell">nuvole<span class="v" data-k="cloud">—</span></div>
+    <div class="cell">vento<span class="v" data-k="wind">—</span></div>
+    <div class="cell">umidità<span class="v" data-k="hum">—</span></div>
+  </div>
+
+  <div id="gate">
+    <h1>bordone</h1>
+    <div class="start">tocca per iniziare</div>
+    <div class="sub">il Manoir de la Moissie che si rilegge dal proprio cielo. attraversa le sue stanze nel corso del giorno. non finisce.</div>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+<script>
+"use strict";
+
+/* ===== STATO ===== */
+const state = {
+  lat:44.7767, lon:1.0080, placeName:"Belvès",
+  temp:27, cloud:18, wind:10, humidity:55, precip:0, snow:0,
+  sunElev:30, sunAz:180
+};
+
+/* ===== STANZE — fondamentale (Hz) e nome, dai modi misurati ===== */
+const ROOMS = {
+  cucina:    { F:71.8, label:"cucina"    },   // re (D) - la quinta del sol
+  soggiorno: { F:61.7, label:"soggiorno" },   // si (B) - la terza; il mi cantato ci fa una quarta consonante
+  bedroom:   { F:98.0, label:"camera"    }    // sol (G) - la fondamentale; confermato da tono e IR
+};
+
+/* ===== ORARIO DELLE STANZE (minuti del giorno) =====
+   camera 21:00-10:00 · cucina 10:00-14:00 · soggiorno 14:00-21:00
+   transizioni in dissolvenza di 40 min attorno a ogni confine. */
+function smoothstep(x){ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); }
+function roomWeights(t){
+  let w={cucina:0,soggiorno:0,bedroom:0};
+  if(t>=600 && t<840) w.cucina=1;
+  else if(t>=840 && t<1260) w.soggiorno=1;
+  else w.bedroom=1;
+  const W=40;
+  const edges=[[600,"bedroom","cucina"],[840,"cucina","soggiorno"],[1260,"soggiorno","bedroom"]];
+  for(const [b,from,to] of edges){
+    const d=t-b;
+    if(Math.abs(d)<=W/2){ const s=smoothstep((d+W/2)/W);
+      w={cucina:0,soggiorno:0,bedroom:0}; w[from]=1-s; w[to]=s; }
+  }
+  return w;
+}
+function fundamentalFromWeights(w){
+  return Math.exp(w.cucina*Math.log(ROOMS.cucina.F)
+                + w.soggiorno*Math.log(ROOMS.soggiorno.F)
+                + w.bedroom*Math.log(ROOMS.bedroom.F));
+}
+function roomLabel(w){
+  let best="cucina",m=-1; for(const k in w){ if(w[k]>m){m=w[k];best=k;} }
+  return ROOMS[best].label;
+}
+
+/* ===== TEMPO ===== */
+let timeOverride=null;
+function currentDate(){ if(timeOverride===null) return new Date();
+  const d=new Date(); d.setHours(Math.floor(timeOverride/60), timeOverride%60, 0, 0); return d; }
+
+/* ===== SOLE (NOAA) ===== */
+function solarPosition(lat,lon,date){
+  const rad=Math.PI/180;
+  const start=new Date(Date.UTC(date.getUTCFullYear(),0,0));
+  const doy=Math.floor((date-start)/86400000);
+  const hUTC=date.getUTCHours()+date.getUTCMinutes()/60+date.getUTCSeconds()/3600;
+  const g=2*Math.PI/365*(doy-1+(hUTC-12)/24);
+  const eqt=229.18*(0.000075+0.001868*Math.cos(g)-0.032077*Math.sin(g)-0.014615*Math.cos(2*g)-0.040849*Math.sin(2*g));
+  const decl=0.006918-0.399912*Math.cos(g)+0.070257*Math.sin(g)-0.006758*Math.cos(2*g)+0.000907*Math.sin(2*g)-0.002697*Math.cos(3*g)+0.00148*Math.sin(3*g);
+  const tst=hUTC*60+(eqt+4*lon);
+  const ha=((tst/4)-180)*rad, latR=lat*rad;
+  const cosZ=Math.sin(latR)*Math.sin(decl)+Math.cos(latR)*Math.cos(decl)*Math.cos(ha);
+  const elev=90-Math.acos(Math.min(1,Math.max(-1,cosZ)))/rad, elevR=elev*rad;
+  let cosA=(Math.sin(decl)-Math.sin(elevR)*Math.sin(latR))/(Math.cos(elevR)*Math.cos(latR));
+  let az=Math.acos(Math.min(1,Math.max(-1,cosA)))/rad; if(ha>0) az=360-az;
+  return {elev,az};
+}
+
+/* ===== METEO ===== */
+async function fetchWeather(){
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${state.lat}&longitude=${state.lon}`
+      +`&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,precipitation,snowfall&wind_speed_unit=kmh`;
+    const r=await fetch(url); if(!r.ok) throw 0;
+    const c=(await r.json()).current;
+    state.temp=c.temperature_2m; state.humidity=c.relative_humidity_2m;
+    state.cloud=c.cloud_cover; state.wind=c.wind_speed_10m;
+    state.gust=c.wind_gusts_10m; state.precip=c.precipitation; state.snow=c.snowfall;
+  }catch(e){ /* tiene l'ultima lettura buona */ }
+}
+function locate(){ return new Promise(res=>{
+  if(!navigator.geolocation) return res();
+  navigator.geolocation.getCurrentPosition(
+    p=>{ state.lat=p.coords.latitude; state.lon=p.coords.longitude; res(); },
+    ()=>res(), {timeout:6000}); }); }
+
+/* ===== MOTORE ===== */
+let engine=null;
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const DRY=0.5, WET=0.62, HUM=0.10;
+
+function buildEngine(){
+  const master=new Tone.Gain(0.0);
+  const limiter=new Tone.Limiter(-2).toDestination();
+  master.connect(limiter);
+
+  const dry=new Tone.Gain(DRY).connect(master);
+  const wetBus=new Tone.Gain(1.0);
+  // riverbero di default (fallback se gli IR non caricano): algoritmico
+  const fallbackVerb=new Tone.Freeverb({roomSize:0.8, dampening:2600}).connect(new Tone.Gain(0.5).connect(master));
+  wetBus.connect(fallbackVerb);
+
+  const filter=new Tone.Filter({type:"lowpass", frequency:900, Q:0.4});
+  filter.connect(dry); filter.connect(wetBus);
+  const panner=new Tone.Panner(0).connect(filter);
+  const busDry=new Tone.Gain(0.9).connect(panner);
+
+  const swell=new Tone.LFO({frequency:0.008, min:0.62, max:1.0}).start();
+  swell.connect(master.gain);
+
+  const spec=[
+    {mul:0.5, base:0.20, night:true },{mul:1.0, base:0.30 },{mul:1.2, base:0.10, night:true },
+    {mul:1.5, base:0.24 },{mul:2.0, base:0.22 },{mul:3.0, base:0.14 },
+    {mul:4.0, base:0.10, high:true },{mul:5.0, base:0.07, high:true },{mul:6.0, base:0.05, high:true }
+  ];
+  const voices=spec.map((p,i)=>{
+    const osc=new Tone.Oscillator({frequency:71.8*p.mul, type:"sine"}).start();
+    const shimmer=new Tone.Gain(0.6), level=new Tone.Gain(0.0).connect(busDry);
+    osc.connect(shimmer); shimmer.connect(level);
+    const lfo=new Tone.LFO({frequency:0.014+i*0.004, min:0.32, max:1.0}).start();
+    lfo.connect(shimmer.gain);
+    return {osc, level, lfo, ...p};
+  });
+
+  const noise=new Tone.Noise("pink").start();
+  const nFilter=new Tone.Filter({type:"bandpass", frequency:1200, Q:0.6}).connect(busDry);
+  const nLevel=new Tone.Gain(0.0); noise.connect(nLevel); nLevel.connect(nFilter);
+
+  const rain=new Tone.Noise("white").start();
+  const rFilter=new Tone.Filter({type:"highpass", frequency:2200, Q:1}).connect(busDry);
+  const rLevel=new Tone.Gain(0.0); rain.connect(rLevel); rLevel.connect(rFilter);
+
+  master.gain.rampTo(0.58, 6);
+
+  const e={ master, dry, filter, wetBus, fallbackVerb, panner, busDry, voices, nLevel, nFilter, rLevel,
+            currentF:71.8, roomW:{cucina:1,soggiorno:0,bedroom:0}, garden:0, hasIR:false, convs:null, hum:null };
+  loadRoomAudio(e);   // asincrono: quando pronti, passa alla convoluzione + voce
+  return e;
+}
+
+/* carica IR e humming; se falliscono (es. anteprima), resta sul riverbero algoritmico */
+async function loadRoomAudio(e){
+  const tryBuf=(url)=>Promise.race([
+    new Promise((res,rej)=>{ const b=new Tone.Buffer(url, ()=>res(b), ()=>rej(0)); }),
+    new Promise((_,rej)=>setTimeout(()=>rej(0),9000))
+  ]);
+  // convoluzione per stanza
+  try{
+    const [bc,bs,bb]=await Promise.all([
+      tryBuf("audio/IR_cucina.wav"), tryBuf("audio/IR_soggiorno.wav"), tryBuf("audio/IR_bedroom.wav")
+    ]);
+    const mk=(buf)=>{ const c=new Tone.Convolver(); c.buffer=buf;
+      const g=new Tone.Gain(0.0).connect(e.master); c.connect(g); e.wetBus.connect(c); return g; };
+    e.convs={ cucina:mk(bc), soggiorno:mk(bs), bedroom:mk(bb) };
+    e.wetBus.disconnect(e.fallbackVerb);   // spegne il fallback, ora suonano le stanze vere
+    e.hasIR=true;
+  }catch(err){ /* resta sul fallback */ }
+  // humming, lette a grani, dentro la stanza
+  try{
+    const hb=await tryBuf("audio/humming.wav");
+    const gp=new Tone.GrainPlayer({ url:hb, loop:true, grainSize:0.5, overlap:0.25, detune:0 });
+    const gHum=new Tone.Gain(0.0).connect(e.busDry);
+    gp.connect(gHum); gp.start();
+    e.hum={ player:gp, gain:gHum };
+  }catch(err){ /* niente voce in anteprima */ }
+}
+
+/* ===== MAPPATURA ===== */
+function updateMapping(){
+  if(!engine) return; const e=engine;
+  const elev=state.sunElev;
+  const bright=clamp(elev,0,55)/55;
+  const night =clamp((6-elev)/12,0,1);
+  const warm  =clamp((state.temp+5)/40,0,1);
+  const cloud =clamp(state.cloud/100,0,1);
+  const wind  =clamp(state.wind/40,0,1);
+  const humid =clamp(state.humidity/100,0,1);
+  const F=e.currentF;
+  const garden=e.garden||0;                         // fuori = aria aperta
+  const sad   = clamp(state.precip/3,0,1);          // pioggia -> malinconia
+  const major = bright*(1-sad);                     // sole sereno -> felice, maggiore
+  const minor = Math.max(night, sad);               // notte o pioggia -> minore, triste
+
+  const cutoff=320+bright*4200+warm*1100-cloud*1100-night*700-sad*1600+garden*2600;
+  e.filter.frequency.rampTo(clamp(cutoff,210,9000),6);
+
+  e.voices.forEach(v=>{
+    let amp=v.base;
+    if(v.high) amp*=major*0.65;                      // armonici alti più morbidi, solo col sole sereno
+    else if(v.night) amp*=minor;                     // terza minore e sub: notte o pioggia
+    else amp*=(0.82+0.18*bright);
+    if(v.mul===1.5) amp*=(1-0.25*minor);
+    v.level.gain.rampTo(amp,6);
+    v.osc.frequency.rampTo(F*v.mul*(1+(warm-0.5)*0.004*v.mul),6);   // glissa con la stanza + caldo
+    v.lfo.frequency.rampTo((0.013+wind*0.018)*(1-0.4*night),12);    // movimento lento
+  });
+
+  e.nLevel.gain.rampTo((0.03+cloud*0.22+wind*0.12)*(1-0.4*night)+garden*0.05,6);
+  e.nFilter.frequency.rampTo(600+wind*3600,6);
+  e.rLevel.gain.rampTo(clamp(state.precip/4,0,1)*0.5,4);
+  e.dry.gain.rampTo(DRY*(1+0.6*garden),6);          // fuori il suono diretto viene avanti
+
+  if(state.snow>0){ e.filter.frequency.rampTo(clamp(cutoff*0.5,200,2200),8); e.fallbackVerb.roomSize.rampTo(0.45,8); }
+  else { e.fallbackVerb.roomSize.rampTo(0.6+humid*0.32+night*0.05,6); }
+
+  // crossfade dei riverberi-stanza; fuori in giardino il riverbero delle pareti si ritira
+  if(e.hasIR && e.convs){
+    const w=e.roomW, ind=1-0.85*garden;
+    e.convs.cucina.gain.rampTo(Math.sqrt(w.cucina)*WET*ind,4);
+    e.convs.soggiorno.gain.rampTo(Math.sqrt(w.soggiorno)*WET*ind,4);
+    e.convs.bedroom.gain.rampTo(Math.sqrt(w.bedroom)*WET*ind,4);
+  }
+  // voce: un filo più presente di giorno, si ritira di notte
+  if(e.hum) e.hum.gain.gain.rampTo(HUM*(0.5+0.5*bright),6);
+
+  const pan=Math.sin((state.sunAz-180)*Math.PI/180)*0.4*(1-0.4*night);
+  e.panner.pan.rampTo(clamp(pan,-0.4,0.4),12);   // si muove ma resta sempre udibile da entrambi i lati
+  e.master.gain.rampTo(0.58*(1-0.15*night),6);
+}
+
+function drift(){
+  if(!engine) return;
+  engine.voices.forEach((v,i)=>{ const base=0.013+i*0.004;
+    v.lfo.frequency.rampTo(clamp(base+(Math.random()-0.5)*0.006,0.004,0.08),40); });
+  if(engine.hum) engine.hum.player.playbackRate=1+(Math.random()-0.5)*0.012;  // la voce non si ripete mai uguale
+}
+
+/* ===== VISIVO ===== */
+function paint(){
+  const elev=state.sunElev, bright=clamp(elev,0,55)/55;
+  const warm=clamp((state.temp+5)/40,0,1), cloud=clamp(state.cloud/100,0,1);
+  const hue=215-warm*183, sat=38-cloud*26, topL=6+bright*30, botL=3+bright*8;
+  const r=document.documentElement.style;
+  r.setProperty("--sky-top",`hsl(${hue} ${sat}% ${topL}%)`);
+  r.setProperty("--sky-bot",`hsl(${hue} ${clamp(sat-10,0,100)}% ${botL}%)`);
+  r.setProperty("--horizon",`${clamp(86-bright*46,26,90)}%`);
+  const set=(k,v)=>{ const el=document.querySelector(`[data-k="${k}"]`); if(el) el.innerHTML=v; };
+  set("sun",`${state.sunElev>0?"+":""}${state.sunElev.toFixed(1)}<small>°</small>`);
+  set("temp",`${Math.round(state.temp)}<small>°c</small>`);
+  set("cloud",`${Math.round(state.cloud)}<small>%</small>`);
+  set("wind",`${Math.round(state.wind)}<small> km/h</small>`);
+  set("hum",`${Math.round(state.humidity)}<small>%</small>`);
+}
+
+/* ===== CICLO ===== */
+const scrub=document.getElementById("scrub"), clockEl=document.getElementById("clock"), liveBtn=document.getElementById("live");
+function tick(){
+  const d=currentDate();
+  const sp=solarPosition(state.lat,state.lon,d); state.sunElev=sp.elev; state.sunAz=sp.az;
+  const w=roomWeights(d.getHours()*60+d.getMinutes());
+  if(engine){
+    engine.roomW=w;
+    const roomF=fundamentalFromWeights(w);
+    // GIARDINO legato al meteo: sereno + sole + caldo -> si esce; pioggia/nuvole/freddo/notte -> si rientra
+    const br=clamp(state.sunElev,0,55)/55, clr=1-clamp(state.cloud/100,0,1);
+    const dryw=1-clamp(state.precip/3,0,1), wm=clamp((state.temp+5)/40,0,1);
+    let g=br*clr*dryw*(0.35+0.65*wm);
+    engine.garden=clamp((g-0.12)*1.5,0,1);
+    engine.currentF=Math.exp((1-engine.garden)*Math.log(roomF)+engine.garden*Math.log(71.8)); // fuori scivola al re di casa
+  }
+  clockEl.textContent=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  if(timeOverride===null) scrub.value=d.getHours()*60+d.getMinutes();
+  const rc=document.querySelector('[data-k="room"]'); if(rc) rc.textContent=(engine&&engine.garden>0.5)?"giardino":roomLabel(w);
+  updateMapping(); paint();
+}
+scrub.addEventListener("input",()=>{ timeOverride=parseInt(scrub.value,10); liveBtn.classList.remove("on"); liveBtn.textContent="prova"; tick(); });
+liveBtn.addEventListener("click",()=>{ timeOverride=null; liveBtn.classList.add("on"); liveBtn.textContent="● ora reale"; tick(); });
+
+/* ===== AVVIO ===== */
+const gate=document.getElementById("gate");
+gate.addEventListener("click", async ()=>{
+  gate.classList.add("fade-out"); setTimeout(()=>gate.remove(),2400);
+  await Tone.start(); await locate();
+  engine=buildEngine(); await fetchWeather(); tick();
+  setInterval(tick,1000); setInterval(fetchWeather,600000); setInterval(drift,40000);
+},{once:true});
+tick();
+</script>
+</body>
+</html>
