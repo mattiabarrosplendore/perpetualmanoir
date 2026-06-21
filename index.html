@@ -34,6 +34,7 @@
   #vol input{ -webkit-appearance:none; appearance:none; width:84px; height:1px; background:var(--line); outline:none; cursor:pointer; }
   #vol input::-webkit-slider-thumb{ -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--ink); }
   #vol input::-moz-range-thumb{ width:10px; height:10px; border:none; border-radius:50%; background:var(--ink); }
+  #astat{ font-size:8px; letter-spacing:.1em; opacity:.55; }
   #timebar{ position:fixed; left:0; right:0; bottom:96px;
     padding:0 clamp(20px,5vw,56px); display:flex; align-items:center; gap:18px;
     font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
@@ -73,7 +74,7 @@
   <div id="title">Perpetual Manoir</div>
   <div id="place">Belvès, France<span class="coord">44.7767°N · 1.0080°E</span><span class="date" id="today">—</span></div>
 
-  <div id="vol"><span class="vlab">volume</span><input id="master" type="range" min="0" max="100" value="75"></div>
+  <div id="vol"><span class="vlab">volume</span><input id="master" type="range" min="0" max="100" value="75"><span id="astat"></span></div>
 
   <div id="timebar">
     <span class="clockcol"><span id="clock">--:--</span><span id="tz">—</span></span>
@@ -233,6 +234,9 @@ function locate(){ return new Promise(res=>{
 /* ===== MOTORE ===== */
 let engine=null, engineOut=null;
 let userVolume=0.75;
+const AUDIO={ok:0,total:0};
+function noteAudio(ok){ AUDIO.total++; if(ok)AUDIO.ok++;
+  const el=document.getElementById("astat"); if(el) el.textContent=`audio ${AUDIO.ok}/${AUDIO.total}`; }
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const DRY=0.5, WET=0.62, HUM=0.10;
 
@@ -248,30 +252,31 @@ function buildEngine(){
   const fallbackVerb=new Tone.Freeverb({roomSize:0.8, dampening:2600}).connect(new Tone.Gain(0.5).connect(master));
   wetBus.connect(fallbackVerb);
 
-  const filter=new Tone.Filter({type:"lowpass", frequency:900, Q:0.4});
-  filter.connect(dry); filter.connect(wetBus);
-  const panner=new Tone.Panner(0).connect(filter);
+  // azimut condiviso, poi riverbero; il filtro-nuvole sta SOLO sul bordone
+  const panner=new Tone.Panner(0);
+  panner.connect(dry); panner.connect(wetBus);
+  const filter=new Tone.Filter({type:"lowpass", frequency:900, Q:0.4}).connect(panner);
 
-  // SOTTOGRUPPI
-  const bedsBus  =new Tone.Gain(0.82).connect(panner);   // letti registrati
-  const eventsBus=new Tone.Gain(0.62).connect(panner);   // passi, voci, inserti
-  // il BORDONE passa per un respiro lento che lo MOLTIPLICA: sale piano, cala piano
-  const breath=new Tone.Gain(0).connect(panner);
-  const breathLFO=new Tone.LFO({frequency:0.011, min:0.40, max:1.0, type:"sine"}).start(); // ~90 s a respiro
+  // SOTTOGRUPPI - i sample passano a piena banda, presenti (non nel filtro del bordone)
+  const bedsBus  =new Tone.Gain(0.95).connect(panner);   // letti registrati
+  const eventsBus=new Tone.Gain(0.72).connect(panner);   // passi, voci, inserti
+  // il BORDONE passa per il respiro (lo MOLTIPLICA) e poi per il filtro
+  const breath=new Tone.Gain(0).connect(filter);
+  const breathLFO=new Tone.LFO({frequency:0.011, min:0.40, max:0.82, type:"sine"}).start(); // ~90 s, picco più gentile
   breathLFO.connect(breath.gain);
   const synthBus =new Tone.Gain(0.80).connect(breath);
   const busDry=synthBus;                                  // alias: il sintetico va nel synthBus
 
-  // GRADI dell'accordo (rapporti giusti). ogni voce ha un proprio "presence" che la fa entrare e uscire lenta
+  // GRADI dell'accordo (rapporti giusti). ogni voce ha presenza propria e una posizione stereo
   const degKeys=Object.keys(DEG);
   const voices=degKeys.map((k,i)=>{
     const osc=new Tone.Oscillator({frequency:71.8*DEG[k], type:"sine"}).start();
     const level=new Tone.Gain(0.0);                        // livello da accordo+meteo
     const pres =new Tone.Gain(k==="root"?1.0:0.5);         // presenza musicale, indipendente
-    const span=((i%2)*2-1)*Math.min(0.5, i*0.06);
+    const span=((i%2)*2-1)*Math.min(0.9, i*0.10);          // radice al centro, gradi alti molto larghi
     const vpan=new Tone.Panner(span).connect(synthBus);
     osc.connect(level); level.connect(pres); pres.connect(vpan);
-    return {osc, level, pres, vpan, deg:k, ratio:DEG[k], presT:(k==="root"?1.0:0.5)};
+    return {osc, level, pres, vpan, span, deg:k, ratio:DEG[k], presT:(k==="root"?1.0:0.5)};
   });
 
   const noise=new Tone.Noise("pink").start();
@@ -314,15 +319,15 @@ async function loadBeds(e){
     ["audio/bed_cucina.mp3",            {room:"cucina",    base:0.62}],
     ["audio/bed_soggiorno_a.mp3",       {room:"soggiorno", base:0.50}],
     ["audio/bed_soggiorno_b.mp3",       {room:"soggiorno", base:0.46}],
-    ["audio/bed_notte_a.mp3",           {room:"bedroom",   base:0.54}],
-    ["audio/bed_notte_b.mp3",           {room:"bedroom",   base:0.48}],
+    ["audio/bed_notte_a.mp3",           {room:"bedroom",   base:0.72}],
+    ["audio/bed_notte_b.mp3",           {room:"bedroom",   base:0.64}],
     ["audio/bed_giardino.mp3",          {garden:true, base:0.46}],
-    ["audio/bed_cicale.mp3",            {garden:true, base:0.44, kind:"cicale"}],
-    ["audio/bed_birds.mp3",             {garden:true, base:0.40, kind:"birds"}],
-    ["audio/bed_giardino_uccellini.mp3",{garden:true, base:0.38, kind:"birds"}],
+    ["audio/bed_cicale.mp3",            {garden:true, base:0.50, kind:"cicale"}],
+    ["audio/bed_birds.mp3",             {garden:true, base:0.42, kind:"birds"}],
+    ["audio/bed_giardino_uccellini.mp3",{garden:true, base:0.40, kind:"birds"}],
     ["audio/bed_rain_gentle.mp3",       {rain:"gentle",  base:0.55}],   // pioggia debole, granulata
     ["audio/bed_rain_intense.mp3",      {rain:"intense", base:0.60}],   // temporale, granulato
-    ["audio/bed_fountain.mp3",          {fountain:true,  base:0.30}]    // acqua che scorre, dal mattino a sera
+    ["audio/bed_fountain.mp3",          {fountain:true,  base:0.32}]    // acqua che scorre, dal mattino a sera
   ];
   e.beds=[];
   for(const [url,meta] of defs){
@@ -334,24 +339,26 @@ async function loadBeds(e){
       const plfo=new Tone.LFO({frequency:0.005+Math.random()*0.008, min:-0.7, max:0.7, type:"sine"}).start();
       plfo.connect(pan.pan);                       // pan L<->R molto lento e largo
       e.beds.push({player:gp, gain:g, pan, plfo, len:buf.duration, presT:1, ...meta});
-    }catch(err){}
+      noteAudio(true);
+    }catch(err){ noteAudio(false); }
   }
   if(!e.beds.length) e.beds=null;
-  // eventi: passi, voci, conversazioni - one-shot, sparsi, panpottati netti (la _lr è già stereo L/R)
-  try{
-    const evs=["audio/event_camminata.mp3","audio/event_pool.mp3",
-               "audio/event_conversation.mp3","audio/event_conversation_studio.mp3","audio/event_conversation_lr.mp3"];
-    e.gardenEvents=[];
-    for(const url of evs){
+  // eventi: passi, voci, conversazioni - one-shot, sparsi (la _lr è già stereo L/R)
+  e.gardenEvents=[];
+  for(const url of ["audio/event_camminata.mp3","audio/event_pool.mp3",
+               "audio/event_conversation.mp3","audio/event_conversation_studio.mp3","audio/event_conversation_lr.mp3"]){
+    try{
       const buf=await tryBuf(url);
       const pan=new Tone.Panner(0).connect(e.eventsBus);
       const g=new Tone.Gain(0.0).connect(pan);
       const pl=new Tone.Player({url:buf, loop:false}); pl.connect(g);
       e.gardenEvents.push({player:pl, gain:g, pan, len:buf.duration, stereo:url.includes("_lr")});
-    }
-  }catch(err){ e.gardenEvents=null; }
-  // INSERTI musicali: rari, accordati alla stanza. chitarre re->cucina, sol->camera; canti consonanti ovunque; radio in cucina (fuori tonalità, suono trovato)
-  try{
+      noteAudio(true);
+    }catch(err){ noteAudio(false); }
+  }
+  if(!e.gardenEvents.length) e.gardenEvents=null;
+  // INSERTI musicali: chitarre re->cucina, sol->camera; canti consonanti ovunque; radio in cucina (suono trovato)
+  {
     const ins=[
       ["audio/insert_guitar_d.mp3",     {room:"cucina"}],
       ["audio/insert_guitar_g.mp3",     {room:"bedroom"}],
@@ -363,6 +370,7 @@ async function loadBeds(e){
     ];
     e.inserts=[];
     for(const [url,meta] of ins){
+      try{
       const buf=await tryBuf(url);
       const pan=new Tone.Panner(0).connect(e.eventsBus);
       const g=new Tone.Gain(0.0).connect(pan);
@@ -370,8 +378,11 @@ async function loadBeds(e){
       const gp=new Tone.GrainPlayer({url:buf, loop:true, grainSize:0.2, overlap:0.1}); // granulato (avviato al bisogno)
       gp.connect(g);
       e.inserts.push({player:pl, grain:gp, gain:g, pan, len:buf.duration, ...meta});
+      noteAudio(true);
+      }catch(err){ noteAudio(false); }
     }
-  }catch(err){ e.inserts=null; }
+    if(!e.inserts.length) e.inserts=null;
+  }
 }
 
 /* carica IR e humming; se falliscono (es. anteprima), resta sul riverbero algoritmico */
@@ -389,16 +400,16 @@ async function loadRoomAudio(e){
       const g=new Tone.Gain(0.0).connect(e.master); c.connect(g); e.wetBus.connect(c); return g; };
     e.convs={ cucina:mk(bc), soggiorno:mk(bs), bedroom:mk(bb) };
     e.wetBus.disconnect(e.fallbackVerb);   // spegne il fallback, ora suonano le stanze vere
-    e.hasIR=true;
-  }catch(err){ /* resta sul fallback */ }
+    e.hasIR=true; noteAudio(true); noteAudio(true); noteAudio(true);
+  }catch(err){ noteAudio(false); /* resta sul fallback */ }
   // humming, lette a grani, dentro la stanza
   try{
     const hb=await tryBuf("audio/humming.wav");
     const gp=new Tone.GrainPlayer({ url:hb, loop:true, grainSize:0.8, overlap:0.35, detune:0 });
     const gHum=new Tone.Gain(0.0).connect(e.busDry);
     gp.connect(gHum); gp.start();
-    e.hum={ player:gp, gain:gHum };
-  }catch(err){ /* niente voce in anteprima */ }
+    e.hum={ player:gp, gain:gHum }; noteAudio(true);
+  }catch(err){ noteAudio(false); /* niente voce in anteprima */ }
 }
 
 /* ===== MAPPATURA ===== */
@@ -438,6 +449,7 @@ function updateMapping(){
     v.osc.frequency.rampTo(F*v.ratio, 20);                       // segue la nota della stanza, intonazione esatta
     v.level.gain.rampTo((target[v.deg]||0)*lvlScale, 18);        // qualità dell'accordo dal meteo
     v.pres.gain.rampTo(v.presT, 9);                              // presenza musicale: la voce entra ed esce per conto suo
+    v.vpan.pan.rampTo(v.span*(e.widthF!=null?e.widthF:1), 14);   // stereo che si apre al mattino e si chiude la sera
   });
 
   e.nLevel.gain.rampTo((cloud*0.12+wind*0.04)*(1-0.4*night),16);
@@ -639,9 +651,12 @@ function tick(){
   const sp=solarPosition(state.lat,state.lon,d); state.sunElev=sp.elev; state.sunAz=sp.az;
   const w=roomWeights(d.getHours()*60+d.getMinutes());
   const summer=summerFactor(d);
+  const h=d.getHours()+d.getMinutes()/60;
+  const widthF=0.35+0.65*(0.5+0.5*Math.cos((h-9)*Math.PI/12));   // largo al mattino, si richiude verso sera
   if(engine){
     engine.roomW=w;
     engine.summer=summer;
+    engine.widthF=widthF;
     engine.garden=w.soggiorno*summer;               // slot sociale + estate = aperto (giardino)
     engine.currentF=fundamentalFromWeights(w, summer);   // estate: il pomeriggio sale al la
   }
