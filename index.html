@@ -26,22 +26,37 @@
   #title{ position:fixed; top:clamp(20px,5vw,56px); left:clamp(20px,5vw,56px);
     font-size:12px; letter-spacing:.42em; text-transform:uppercase; color:var(--ink-dim); }
   #place{ position:fixed; top:clamp(20px,5vw,56px); right:clamp(20px,5vw,56px);
-    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); text-align:right; }
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); text-align:right; display:flex; flex-direction:column; gap:4px; }
+  #place .coord{ font-size:9px; letter-spacing:.1em; opacity:.7; }
+  #place .date{ font-size:10px; letter-spacing:.16em; color:var(--ink); opacity:.8; }
+  #vol{ position:fixed; top:clamp(54px,9vw,96px); left:clamp(20px,5vw,56px); display:flex; align-items:center; gap:10px;
+    font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-dim); }
+  #vol input{ -webkit-appearance:none; appearance:none; width:84px; height:1px; background:var(--line); outline:none; cursor:pointer; }
+  #vol input::-webkit-slider-thumb{ -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--ink); }
+  #vol input::-moz-range-thumb{ width:10px; height:10px; border:none; border-radius:50%; background:var(--ink); }
   #timebar{ position:fixed; left:0; right:0; bottom:96px;
     padding:0 clamp(20px,5vw,56px); display:flex; align-items:center; gap:18px;
     font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
-  #clock{ color:var(--ink); font-size:13px; letter-spacing:.06em; min-width:54px; }
+  .clockcol{ display:flex; flex-direction:column; gap:2px; min-width:64px; }
+  #clock{ color:var(--ink); font-size:13px; letter-spacing:.06em; }
+  #tz{ font-size:8px; letter-spacing:.1em; opacity:.7; }
   #scrub{ -webkit-appearance:none; appearance:none; flex:1; height:1px; background:var(--line); outline:none; cursor:pointer; }
   #scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:11px; height:11px; border-radius:50%; background:var(--ink); }
   #scrub::-moz-range-thumb{ width:11px; height:11px; border:none; border-radius:50%; background:var(--ink); }
   #live{ cursor:pointer; letter-spacing:.2em; color:var(--ink-dim); border:1px solid var(--line); padding:7px 12px; transition:color .3s,border-color .3s; white-space:nowrap; }
   #live.on{ color:var(--ink); border-color:var(--ink); }
   #log{ position:fixed; left:0; right:0; bottom:0;
-    padding:22px clamp(20px,5vw,56px) calc(22px + env(safe-area-inset-bottom));
-    display:grid; gap:14px 28px; grid-template-columns:repeat(auto-fit,minmax(86px,1fr));
-    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
-  .cell .v{ display:block; color:var(--ink); font-size:15px; letter-spacing:.04em; margin-top:5px; text-transform:none; }
-  .cell .v small{ color:var(--ink-dim); font-size:11px; }
+    padding:18px clamp(20px,5vw,56px) calc(18px + env(safe-area-inset-bottom));
+    display:grid; gap:12px 24px; grid-template-columns:repeat(auto-fit,minmax(78px,1fr));
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); }
+  .cell .v{ display:block; color:var(--ink); font-size:14px; letter-spacing:.04em; margin-top:5px; text-transform:none; }
+  .cell .v small{ color:var(--ink-dim); font-size:10px; }
+  @media (max-width:680px){
+    #timebar{ bottom:auto; top:auto; }
+    #log{ font-size:9px; gap:10px 16px; grid-template-columns:repeat(auto-fit,minmax(64px,1fr)); }
+    #log .v{ font-size:12px; }
+    #timebar{ bottom:128px; }
+  }
   #gate{ position:fixed; inset:0; z-index:10; display:flex; flex-direction:column;
     align-items:center; justify-content:center; gap:26px; background:#05070a; cursor:pointer; }
   #gate h1{ font-weight:400; font-size:13px; letter-spacing:.5em; text-transform:uppercase; color:var(--ink-dim); }
@@ -56,10 +71,12 @@
 <body>
   <div id="sky"></div><div id="horizon"></div><div id="grain"></div>
   <div id="title">Perpetual Manoir</div>
-  <div id="place">Belvès</div>
+  <div id="place">Belvès, France<span class="coord">44.7767°N · 1.0080°E</span><span class="date" id="today">—</span></div>
+
+  <div id="vol"><span class="vlab">volume</span><input id="master" type="range" min="0" max="100" value="75"></div>
 
   <div id="timebar">
-    <span id="clock">--:--</span>
+    <span class="clockcol"><span id="clock">--:--</span><span id="tz">—</span></span>
     <input id="scrub" type="range" min="0" max="1439" value="720">
     <span id="live" class="on">● live</span>
   </div>
@@ -67,10 +84,14 @@
   <div id="log">
     <div class="cell">room<span class="v" data-k="room">—</span></div>
     <div class="cell">sun<span class="v" data-k="sun">—</span></div>
+    <div class="cell">azimuth<span class="v" data-k="az">—</span></div>
     <div class="cell">temp<span class="v" data-k="temp">—</span></div>
     <div class="cell">clouds<span class="v" data-k="cloud">—</span></div>
     <div class="cell">wind<span class="v" data-k="wind">—</span></div>
     <div class="cell">humidity<span class="v" data-k="hum">—</span></div>
+    <div class="cell">pressure<span class="v" data-k="press">—</span></div>
+    <div class="cell">moon<span class="v" data-k="moon">—</span></div>
+    <div class="cell">season<span class="v" data-k="season">—</span></div>
   </div>
 
   <div id="gate">
@@ -87,13 +108,14 @@
 const state = {
   lat:44.7767, lon:1.0080, placeName:"Belvès",
   temp:16, cloud:50, wind:8, humidity:65, precip:0, snow:0,
+  pressure:null, pressTrend:0,
   sunElev:30, sunAz:180
 };
 
 /* ===== STANZE — fondamentale (Hz) e nome, dai modi misurati ===== */
 const ROOMS = {
   cucina:    { F:71.8 },   // re (D) - cucina
-  soggiorno: { F:61.7 },   // si (B) - slot sociale: giardino (estate) / soggiorno (inverno)
+  soggiorno: { F:61.7 },   // slot sociale: la (giardino, estate) / si (soggiorno, inverno)
   bedroom:   { F:98.0 }    // sol (G) - camera
 };
 
@@ -140,9 +162,20 @@ function summerFactor(date){
   const doy=Math.floor((date-start)/86400000);
   return Math.min(1,Math.max(0, Math.min((doy-105)/16, (288-doy)/15)));
 }
-function fundamentalFromWeights(w){
+/* fase lunare approssimata: illuminazione 0..1 e nome */
+function moonInfo(date){
+  const syn=29.530588853, ref=Date.UTC(2000,0,6,18,14)/86400000;
+  const frac=(((date.getTime()/86400000-ref)%syn+syn)%syn)/syn;     // 0=novilunio
+  const illum=0.5*(1-Math.cos(2*Math.PI*frac));
+  const names=["new","waxing crescent","first quarter","waxing gibbous","full","waning gibbous","last quarter","waning crescent"];
+  return {frac, illum, name:names[Math.floor(frac*8+0.5)%8]};
+}
+function compass(az){ return ["N","NE","E","SE","S","SW","W","NW"][Math.floor((((az%360)+22.5)%360)/45)]; }
+const A_SUMMER=110.0, B_WINTER=61.7;   // giardino d'estate = la (luminoso); soggiorno d'inverno = si (risonanza reale)
+function fundamentalFromWeights(w, summer=0){
+  const socialF=Math.exp(Math.log(B_WINTER)*(1-summer)+Math.log(A_SUMMER)*summer);
   return Math.exp(w.cucina*Math.log(ROOMS.cucina.F)
-                + w.soggiorno*Math.log(ROOMS.soggiorno.F)
+                + w.soggiorno*Math.log(socialF)
                 + w.bedroom*Math.log(ROOMS.bedroom.F));
 }
 function roomLabel(w, summer){
@@ -179,12 +212,16 @@ function solarPosition(lat,lon,date){
 async function fetchWeather(){
   try{
     const url=`https://api.open-meteo.com/v1/forecast?latitude=${state.lat}&longitude=${state.lon}`
-      +`&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,precipitation,snowfall&wind_speed_unit=kmh`;
+      +`&current=temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,precipitation,snowfall,surface_pressure&wind_speed_unit=kmh`;
     const r=await fetch(url); if(!r.ok) throw 0;
     const c=(await r.json()).current;
     state.temp=c.temperature_2m; state.humidity=c.relative_humidity_2m;
     state.cloud=c.cloud_cover; state.wind=c.wind_speed_10m;
     state.gust=c.wind_gusts_10m; state.precip=c.precipitation; state.snow=c.snowfall;
+    if(typeof c.surface_pressure==="number"){
+      if(state.pressure!=null) state.pressTrend=c.surface_pressure-state.pressure;
+      state.pressure=c.surface_pressure;
+    }
   }catch(e){ /* tiene l'ultima lettura buona */ }
 }
 function locate(){ return new Promise(res=>{
@@ -194,14 +231,17 @@ function locate(){ return new Promise(res=>{
     ()=>res(), {timeout:6000}); }); }
 
 /* ===== MOTORE ===== */
-let engine=null;
+let engine=null, engineOut=null;
+let userVolume=0.75;
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const DRY=0.5, WET=0.62, HUM=0.10;
 
 function buildEngine(){
   const limiter=new Tone.Limiter(-1.5).toDestination();
-  const comp=new Tone.Compressor({threshold:-20, ratio:2.5, attack:0.25, release:0.7}).connect(limiter);
+  const outGain=new Tone.Gain(userVolume).connect(limiter);   // volume utente
+  const comp=new Tone.Compressor({threshold:-20, ratio:2.5, attack:0.25, release:0.7}).connect(outGain);
   const master=new Tone.Gain(0.0).connect(comp);     // swell + notte; il comp livella, il limiter è solo sicurezza
+  engineOut=outGain;
 
   const dry=new Tone.Gain(DRY).connect(master);
   const wetBus=new Tone.Gain(1.0);
@@ -258,7 +298,7 @@ function buildEngine(){
   const e={ master, dry, filter, wetBus, fallbackVerb, panner, busDry, synthBus, bedsBus, eventsBus,
             voices, nLevel, nFilter, rLevel, overtones,
             currentF:71.8, roomW:{cucina:1,soggiorno:0,bedroom:0}, garden:0, hasIR:false, convs:null, hum:null,
-            beds:null, gardenEvents:null };
+            beds:null, gardenEvents:null, inserts:null };
   loadRoomAudio(e);   // asincrono: convoluzione + voce
   loadBeds(e);        // asincrono: letti per stanza + giardino, ed eventi
   return e;
@@ -280,7 +320,9 @@ async function loadBeds(e){
     ["audio/bed_cicale.mp3",            {garden:true, base:0.44, kind:"cicale"}],
     ["audio/bed_birds.mp3",             {garden:true, base:0.40, kind:"birds"}],
     ["audio/bed_giardino_uccellini.mp3",{garden:true, base:0.38, kind:"birds"}],
-    ["audio/bed_rain.mp3",              {rain:true, base:0.55}]   // granulato, entra solo quando piove
+    ["audio/bed_rain_gentle.mp3",       {rain:"gentle",  base:0.55}],   // pioggia debole, granulata
+    ["audio/bed_rain_intense.mp3",      {rain:"intense", base:0.60}],   // temporale, granulato
+    ["audio/bed_fountain.mp3",          {fountain:true,  base:0.30}]    // acqua che scorre, dal mattino a sera
   ];
   e.beds=[];
   for(const [url,meta] of defs){
@@ -295,18 +337,39 @@ async function loadBeds(e){
     }catch(err){}
   }
   if(!e.beds.length) e.beds=null;
-  // eventi: passi, voci - one-shot, sparsi, panpottati netti
+  // eventi: passi, voci, conversazioni - one-shot, sparsi, panpottati netti (la _lr è già stereo L/R)
   try{
-    const evs=["audio/event_camminata.mp3","audio/event_pool.mp3"];
+    const evs=["audio/event_camminata.mp3","audio/event_pool.mp3",
+               "audio/event_conversation.mp3","audio/event_conversation_studio.mp3","audio/event_conversation_lr.mp3"];
     e.gardenEvents=[];
     for(const url of evs){
       const buf=await tryBuf(url);
       const pan=new Tone.Panner(0).connect(e.eventsBus);
       const g=new Tone.Gain(0.0).connect(pan);
       const pl=new Tone.Player({url:buf, loop:false}); pl.connect(g);
-      e.gardenEvents.push({player:pl, gain:g, pan, len:buf.duration});
+      e.gardenEvents.push({player:pl, gain:g, pan, len:buf.duration, stereo:url.includes("_lr")});
     }
   }catch(err){ e.gardenEvents=null; }
+  // INSERTI musicali: rari, accordati alla stanza. chitarre re->cucina, sol->camera; canti consonanti ovunque; radio in cucina (fuori tonalità, suono trovato)
+  try{
+    const ins=[
+      ["audio/insert_guitar_d.mp3",     {room:"cucina"}],
+      ["audio/insert_guitar_g.mp3",     {room:"bedroom"}],
+      ["audio/insert_canto.mp3",        {room:"any"}],
+      ["audio/insert_canto_guitar.mp3", {room:"any"}],
+      ["audio/insert_guitar_voice.mp3", {room:"any"}],
+      ["audio/insert_voce.mp3",         {room:"any"}],
+      ["audio/insert_radio.mp3",        {room:"cucina", radio:true}]
+    ];
+    e.inserts=[];
+    for(const [url,meta] of ins){
+      const buf=await tryBuf(url);
+      const pan=new Tone.Panner(0).connect(e.eventsBus);
+      const g=new Tone.Gain(0.0).connect(pan);
+      const pl=new Tone.Player({url:buf, loop:false}); pl.connect(g);
+      e.inserts.push({player:pl, gain:g, pan, len:buf.duration, ...meta});
+    }
+  }catch(err){ e.inserts=null; }
 }
 
 /* carica IR e humming; se falliscono (es. anteprima), resta sul riverbero algoritmico */
@@ -397,11 +460,13 @@ function updateMapping(){
   // lo slot sociale: giardino d'estate, soggiorno d'inverno
   if(e.beds){
     const su=e.summer||0, rainAmt=clamp(state.precip/2,0,1);
+    const light=clamp(state.precip,0,1), heavy=clamp((state.precip-1)/3,0,1);  // debole 0-1mm, forte 1-4mm
     e.beds.forEach(b=>{
       let lv=b.base;
-      if(b.rain){
-        lv*=rainAmt;                              // entra solo quando piove, granulata
-      } else if(b.garden){
+      if(b.rain==='gentle')      lv*=light*(1-heavy);     // pioggia debole
+      else if(b.rain==='intense')lv*=heavy;               // temporale
+      else if(b.fountain)        lv*=bright*(1-0.7*rainAmt); // acqua di giorno, si ritira sotto il temporale
+      else if(b.garden){
         lv*=e.roomW.soggiorno*su*(1-rainAmt);     // giardino: estate, ma la pioggia lo richiude
         if(b.kind==='cicale') lv*=(0.4+0.6*bright);
         if(b.kind==='birds')  lv*=(0.5+0.5*bright);
@@ -467,7 +532,7 @@ function gardenEvent(){
     if(bright>0.12 && rainAmt<0.3 && Math.random()<chance){
       const ev=engine.gardenEvents[Math.floor(Math.random()*engine.gardenEvents.length)];
       try{
-        ev.pan.pan.value=(Math.random()<0.5?-1:1)*(0.6+Math.random()*0.3);  // bel pan netto L o R
+        ev.pan.pan.value = ev.stereo ? 0 : (Math.random()<0.5?-1:1)*(0.6+Math.random()*0.3);  // la _lr resta stereo; le altre pan netto
         ev.gain.gain.value=0; ev.gain.gain.rampTo(0.55,3);
         const off=Math.random()*Math.max(0.1,(ev.len||10)-6);
         ev.player.start(undefined, off);
@@ -489,6 +554,28 @@ function wander(){
   setTimeout(wander,(7+Math.random()*9)*1000);  // sposta la finestra di lettura ogni 7-16 s
 }
 
+/* ===== INSERTI musicali: chitarra, canto, radio - rari, accordati alla stanza ===== */
+function insertEvent(){
+  if(engine && engine.inserts && engine.inserts.length){
+    const w=engine.roomW||{cucina:1,soggiorno:0,bedroom:0};
+    let cur="cucina",m=-1; for(const k in w){ if(w[k]>m){m=w[k];cur=k;} }
+    const pool=engine.inserts.filter(x=>x.room===cur || x.room==="any");
+    const bright=clamp(state.sunElev,0,55)/55;
+    if(pool.length && bright>0.05 && Math.random()<0.6){     // di giorno, ogni tanto
+      const ins=pool[Math.floor(Math.random()*pool.length)];
+      try{
+        ins.pan.pan.value=(Math.random()*2-1)*0.4;            // gentile, mai tutto da un lato
+        const lvl=ins.radio?0.26:0.42;                        // la radio più sotto, è un fantasma trovato
+        ins.gain.gain.value=0; ins.gain.gain.rampTo(lvl,2.5);
+        ins.player.start();
+        const dur=ins.len||12;
+        setTimeout(()=>{ try{ins.gain.gain.rampTo(0,3.5);}catch(e){} }, Math.max(1,(dur-3.5))*1000);
+      }catch(e){}
+    }
+  }
+  setTimeout(insertEvent,(150+Math.random()*180)*1000);      // ogni 2,5-5,5 min, raro
+}
+
 /* ===== VISIVO ===== */
 function paint(){
   const elev=state.sunElev, bright=clamp(elev,0,55)/55;
@@ -500,10 +587,16 @@ function paint(){
   r.setProperty("--horizon",`${clamp(86-bright*46,26,90)}%`);
   const set=(k,v)=>{ const el=document.querySelector(`[data-k="${k}"]`); if(el) el.innerHTML=v; };
   set("sun",`${state.sunElev>0?"+":""}${state.sunElev.toFixed(1)}<small>°</small>`);
+  set("az",`${Math.round(state.sunAz)}<small>° ${compass(state.sunAz)}</small>`);
   set("temp",`${Math.round(state.temp)}<small>°c</small>`);
   set("cloud",`${Math.round(state.cloud)}<small>%</small>`);
   set("wind",`${Math.round(state.wind)}<small> km/h</small>`);
   set("hum",`${Math.round(state.humidity)}<small>%</small>`);
+  const arrow=state.pressTrend>0.3?"↑":state.pressTrend<-0.3?"↓":"→";
+  set("press", state.pressure!=null?`${Math.round(state.pressure)}<small> hPa ${arrow}</small>`:"—");
+  const mo=moonInfo(currentDate());
+  set("moon",`${Math.round(mo.illum*100)}<small>% ${mo.name}</small>`);
+  set("season", (summerFactor(currentDate())>0.5)?"summer":"winter");
 }
 
 /* ===== CICLO ===== */
@@ -517,9 +610,17 @@ function tick(){
     engine.roomW=w;
     engine.summer=summer;
     engine.garden=w.soggiorno*summer;               // slot sociale + estate = aperto (giardino)
-    engine.currentF=fundamentalFromWeights(w);       // la stanza tiene la sua nota, sempre
+    engine.currentF=fundamentalFromWeights(w, summer);   // estate: il pomeriggio sale al la
   }
   clockEl.textContent=`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  const td=document.getElementById("today");
+  if(td) td.textContent=`${String(d.getDate()).padStart(2,"0")}.${String(d.getMonth()+1).padStart(2,"0")}.${String(d.getFullYear()).slice(-2)}`;
+  const tzEl=document.getElementById("tz");
+  if(tzEl && tzEl.textContent==="—"){
+    try{ const z=Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const off=-d.getTimezoneOffset()/60; tzEl.textContent=`${z} · UTC${off>=0?"+":""}${off}`; }
+    catch(e){ tzEl.textContent=""; }
+  }
   if(timeOverride===null) scrub.value=d.getHours()*60+d.getMinutes();
   const rc=document.querySelector('[data-k="room"]');
   if(rc) rc.textContent=roomLabel(w, summer);
@@ -527,6 +628,8 @@ function tick(){
 }
 scrub.addEventListener("input",()=>{ timeOverride=parseInt(scrub.value,10); liveBtn.classList.remove("on"); liveBtn.textContent="preview"; tick(); });
 liveBtn.addEventListener("click",()=>{ timeOverride=null; liveBtn.classList.add("on"); liveBtn.textContent="● live"; tick(); });
+const masterSlider=document.getElementById("master");
+masterSlider.addEventListener("input",()=>{ userVolume=masterSlider.value/100; if(engineOut) engineOut.gain.rampTo(userVolume,0.2); });
 
 /* ===== AVVIO ===== */
 const gate=document.getElementById("gate");
@@ -534,7 +637,7 @@ gate.addEventListener("click", async ()=>{
   gate.classList.add("fade-out"); setTimeout(()=>gate.remove(),2400);
   await Tone.start(); await locate();
   engine=buildEngine(); await fetchWeather(); tick();
-  setInterval(tick,1000); setInterval(fetchWeather,600000); setInterval(drift,90000); bloom(); gardenEvent(); wander();
+  setInterval(tick,1000); setInterval(fetchWeather,600000); setInterval(drift,90000); bloom(); gardenEvent(); wander(); setTimeout(insertEvent,60000);
 },{once:true});
 tick();
 </script>
