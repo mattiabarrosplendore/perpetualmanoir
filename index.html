@@ -351,7 +351,7 @@ function buildEngine(){
             guitarVerb, voiceVerb, voiceBlur,
             voices, nLevel, nFilter, rLevel, overtones,
             currentF:71.8, roomW:{cucina:1,soggiorno:0,bedroom:0}, garden:0, hasIR:false, convs:null, hum:null,
-            beds:null, gardenEvents:null, inserts:null, activeBed:null, oneShotActive:false };
+            beds:null, gardenEvents:null, inserts:null, activeBed:null, oneShotActive:false, houseBell:null, houseBellDay:null };
   loadRoomAudio(e);   // asincrono: convoluzione + voce
   loadBeds(e);        // asincrono: letti per stanza + giardino, ed eventi
   return e;
@@ -418,7 +418,14 @@ async function loadBeds(e){
     ["audio/event_girls.mp3",               {rooms:"any", voice:true, dry:0.40, wet:0.90, hours:[9,24]}],   // ovunque, mai 0-9
     ["audio/event_kitchen_talk.mp3",        {rooms:["cucina"], voice:true, dry:0.40, wet:0.85}],            // chiacchiera in cucina
     ["audio/event_kid.mp3",                 {rooms:"any", voice:true, dry:0.40, wet:0.85, hours:[9,22]}],   // un bambino, di giorno
-    ["audio/event_tuffi.mp3",               {rooms:"any", summerOnly:true}]                                  // tuffi in piscina, estate
+    ["audio/event_tuffi.mp3",               {rooms:"any", summerOnly:true}],                                 // tuffi in piscina, estate
+    ["audio/event_laugh_a.mp3",             {rooms:"any", voice:true, dry:0.38, wet:0.92, hours:[22,2]}],   // risate notturne 22-2
+    ["audio/event_laugh_b.mp3",             {rooms:"any", voice:true, dry:0.38, wet:0.92, hours:[22,2]}],
+    ["audio/event_sierra_marcel.mp3",       {rooms:["soggiorno"], summerOnly:true, voice:true, dry:0.42, wet:0.85}], // giardino
+    ["audio/event_piscina_talk.mp3",        {rooms:["soggiorno"], summerOnly:true, voice:true, dry:0.42, wet:0.85}], // giardino
+    ["audio/event_village_bells.mp3",       {rooms:"any", hours:[12,13], dry:0.8}],                          // campane del paese, mezzogiorno
+    ["audio/event_acqua_kid.mp3",           {rooms:"any", summerOnly:true, voice:true, dry:0.45, wet:0.75, hours:[13,19]}], // pomeriggio d'estate
+    ["audio/event_fiumi_kid.mp3",           {rooms:"any", summerOnly:true, voice:true, dry:0.45, wet:0.75, hours:[13,19]}]
   ];
   e.gardenEvents=[];
   for(const [url,meta] of evDefs){
@@ -433,6 +440,7 @@ async function loadBeds(e){
     ["audio/insert_guitar_g.mp3",     {rooms:["bedroom"], clean:true, guitar:true, hardPan:true, wet:0.5}],
     ["audio/insert_canto.mp3",        {rooms:"any", choir:true, dry:0.5, wet:0.8}],   // cori: riverbero, si disperdono
     ["audio/insert_canto_guitar.mp3", {rooms:"any", choir:true, dry:0.55, wet:0.7}],
+    ["audio/insert_canto_alto.mp3",   {rooms:"any", choir:true, dry:0.5, wet:0.82, hours:[22,7]}], // la notte
     ["audio/insert_guitar_voice.mp3", {rooms:"any"}],
     ["audio/insert_voce.mp3",         {rooms:"any"}],
     ["audio/insert_radio.mp3",        {rooms:["cucina","soggiorno"], radio:true, hours:[7,24]}],
@@ -463,6 +471,10 @@ async function loadBeds(e){
     catch(err){ noteAudio(false,url); }
   }
   if(!e.inserts.length) e.inserts=null;
+
+  // campana di casa: una sola volta al giorno, alle 11.15 - a parte, non nel pool casuale
+  try{ e.houseBell=wireShot(await tryBuf("audio/house_bell.mp3"),{clean:true,dry:0.9}); noteAudio(true); }
+  catch(err){ noteAudio(false,"audio/house_bell.mp3"); }
 }
 
 /* carica IR e humming; se falliscono (es. anteprima), resta sul riverbero algoritmico */
@@ -772,6 +784,17 @@ function tick(){
   const d=currentDate();
   const sp=solarPosition(state.lat,state.lon,d); state.sunElev=sp.elev; state.sunAz=sp.az;
   const w=roomWeights(d.getHours()*60+d.getMinutes());
+  if(engine && engine.houseBell){                          // campana di casa, una volta alle 11.15
+    const tb=d.getHours()*60+d.getMinutes();
+    const key=d.getFullYear()+"-"+d.getMonth()+"-"+d.getDate();
+    if(tb===675 && engine.houseBellDay!==key){
+      engine.houseBellDay=key; const hb=engine.houseBell;
+      try{ hb.pan.pan.value=0; hb.gain.gain.value=0; hb.gain.gain.rampTo(0.62,1.2); hb.player.start();
+        engine.oneShotActive=true; setTimeout(()=>{ if(engine) engine.oneShotActive=false; }, (hb.len||12)*1000);
+        setTimeout(()=>{ try{hb.gain.gain.rampTo(0,3);}catch(e){} }, Math.max(1,(hb.len||12)-3)*1000);
+      }catch(e){}
+    }
+  }
   const summer=summerFactor(d);
   const h=d.getHours()+d.getMinutes()/60;
   const widthF=0.35+0.65*(0.5+0.5*Math.cos((h-9)*Math.PI/12));   // largo al mattino, si richiude verso sera
