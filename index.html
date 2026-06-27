@@ -98,6 +98,8 @@
     <div class="cell">pressure<span class="v" data-k="press">—</span></div>
     <div class="cell">moon<span class="v" data-k="moon">—</span></div>
     <div class="cell">season<span class="v" data-k="season">—</span></div>
+    <div class="cell">sunrise<span class="v" data-k="sunrise">—</span></div>
+    <div class="cell">sunset<span class="v" data-k="sunset">—</span></div>
   </div>
 
   <div id="gate">
@@ -144,17 +146,37 @@ const CHORDS = {
    lo slot "sociale" (soggiorno) è giardino d'estate, soggiorno d'inverno.
    transizioni in dissolvenza di 40 min. */
 function smoothstep(x){ x=Math.min(1,Math.max(0,x)); return x*x*(3-2*x); }
+/* alba e tramonto reali (minuti locali) - SOLO per mostrarli e per i colori (luce/foto), NON per le stanze */
+let _sunCache={key:null, sr:360, ss:1200};
+function sunTimes(lat,lon,date){
+  const key=date.getFullYear()+"-"+date.getMonth()+"-"+date.getDate();
+  if(_sunCache.key===key) return _sunCache;
+  let prev=null, sr=null, ss=null, pm=0;
+  for(let m=0;m<=1440;m+=5){
+    const d=new Date(date); d.setHours(0,0,0,0); d.setMinutes(m);
+    const e=solarPosition(lat,lon,d).elev;
+    if(prev!==null){
+      if(prev<0 && e>=0 && sr===null) sr=pm+(0-prev)/(e-prev)*5;   // alba
+      if(prev>=0 && e<0)              ss=pm+(0-prev)/(e-prev)*5;   // tramonto
+    }
+    prev=e; pm=m;
+  }
+  if(sr===null) sr=360; if(ss===null) ss=1200;
+  _sunCache={key, sr, ss}; return _sunCache;
+}
+/* programma delle stanze a orari FISSI (la stanza non aspetta il sole; i colori sì, via sunElev):
+   camera ->7.30, cucina ->13.30, giardino/soggiorno ->19, cucina 19-21, giardino/soggiorno ->23, poi camera */
 function segAt(t){
-  if(t>=600 && t<840)  return "cucina";     // 10-14
-  if(t>=840 && t<1080) return "soggiorno";  // 14-18
-  if(t>=1080&& t<1200) return "cucina";     // 18-20
-  if(t>=1200&& t<1320) return "soggiorno";  // 20-22
-  return "bedroom";                          // 22-10
+  if(t>=450  && t<810)  return "cucina";     // 7.30 - 13.30
+  if(t>=810  && t<1140) return "soggiorno";  // 13.30 - 19
+  if(t>=1140 && t<1260) return "cucina";     // 19 - 21
+  if(t>=1260 && t<1380) return "soggiorno";  // 21 - 23
+  return "bedroom";                           // 23 - 7.30
 }
 function roomWeights(t){
   let w={cucina:0,soggiorno:0,bedroom:0};
   w[segAt(t)]=1;
-  const W=40, edges=[600,840,1080,1200,1320];
+  const W=40, edges=[450,810,1140,1260,1380];
   for(const b of edges){
     const d=t-b;
     if(Math.abs(d)<=W/2){ const s=smoothstep((d+W/2)/W);
@@ -739,6 +761,9 @@ function paint(){
   const mo=moonInfo(currentDate());
   set("moon",`${Math.round(mo.illum*100)}<small>% ${mo.name}</small>`);
   set("season", (summerFactor(currentDate())>0.5)?"summer":"winter");
+  { const stt=sunTimes(state.lat,state.lon,currentDate());
+    const fmtM=m=>{m=Math.round(m); return String(Math.floor(m/60)%24).padStart(2,"0")+":"+String(((m%60)+60)%60).padStart(2,"0");};
+    set("sunrise", fmtM(stt.sr)); set("sunset", fmtM(stt.ss)); }
 }
 
 /* ===== CICLO ===== */
