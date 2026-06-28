@@ -19,7 +19,7 @@
     background:radial-gradient(120% 90% at 50% var(--horizon), var(--sky-top) 0%, var(--sky-bot) 100%);
     transition:background 8s linear; }
   #bg{ position:fixed; inset:0; z-index:-2; overflow:hidden; }
-  #photo{ position:absolute; inset:-4%; width:108%; height:108%;
+  #photo{ position:absolute; inset:-8%; width:116%; height:116%;
     background:url("bg.jpg") center/cover no-repeat; will-change:filter;
     transition:filter 6s linear; }
   #bg .tint{ position:absolute; inset:0; pointer-events:none; transition:opacity 6s linear; }
@@ -786,7 +786,7 @@ function paint(){
     const bri=(0.5+0.62*bright)*(1-0.15*cl2);
     const con=1.0+0.12*(1-cl2)-0.10*rain;
     const satF=(0.5+0.7*summerF)*(1-0.5*cl2)*(1-0.5*rain)*(1-0.3*ni);
-    const hr=warmth*6-(1-summerF)*6, bl=rain*3+cl2*0.4;
+    const hr=warmth*6-(1-summerF)*6, bl=44+rain*5+cl2*1.2;            // sfocatura di base: campo astratto di colore e luce
     ph.style.filter=`brightness(${bri.toFixed(3)}) contrast(${con.toFixed(3)}) saturate(${satF.toFixed(3)}) hue-rotate(${hr.toFixed(1)}deg) blur(${bl.toFixed(2)}px)`;
     const warmO=clamp(Math.max(0,warmth)*0.5+gold*0.6,0,1)*0.4;
     const coldO=clamp(Math.max(0,-warmth)*0.6+ni*0.5+(1-summerF)*0.3-gold*0.5,0,1)*0.45;
